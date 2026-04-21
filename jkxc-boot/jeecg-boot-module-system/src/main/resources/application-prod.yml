@@ -204,8 +204,8 @@ jeecg :
     service-staff-backfill-token: ""
   #阿里云oss存储和大鱼短信秘钥配置
   oss:
-    accessKey: LTAIgIM5m9VuUCpM
-    secretKey: LYNl2lok0S6Y489iYjbLWzXgzZE0Ut
+    accessKey: ${ALIYUN_OSS_ACCESS_KEY:}
+    secretKey: ${ALIYUN_OSS_SECRET_KEY:}
     endpoint: oss-cn-beijing.aliyuncs.com
     bucketName: qidada-one
   # ElasticSearch 6设置
