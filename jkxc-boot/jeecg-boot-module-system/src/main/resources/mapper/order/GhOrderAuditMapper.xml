@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.order.mapper.GhOrderAuditMapper">
+
+    <!-- 根据订单ID查询审核记录列表（按步骤顺序排序） -->
+    <select id="getAuditsByOrderId" resultType="org.jeecg.modules.order.entity.GhOrderAudit">
+        SELECT * FROM gh_order_audit
+        WHERE order_id = #{orderId}
+        ORDER BY step_order ASC, create_time ASC
+    </select>
+
+    <!-- 根据订单ID和步骤顺序查询审核记录 -->
+    <select id="getAuditByOrderIdAndStep" resultType="org.jeecg.modules.order.entity.GhOrderAudit">
+        SELECT * FROM gh_order_audit
+        WHERE order_id = #{orderId}
+        AND step_order = #{stepOrder}
+        LIMIT 1
+    </select>
+
+    <!-- 根据订单ID和角色ID查询待审核的记录（需要检查前一步是否已完成） -->
+    <select id="getPendingAuditByOrderIdAndRole" resultType="org.jeecg.modules.order.entity.GhOrderAudit">
+        SELECT a.* FROM gh_order_audit a
+        WHERE a.order_id = #{orderId}
+        AND a.role_id = #{roleId}
+        AND a.audit_status = 'pending'
+        AND (
+            -- 如果是第一步（step_order = 1），直接可以审核
+            a.step_order = 1
+            OR
+            -- 如果不是第一步，需要检查前一步是否已经全部完成
+            (
+                a.step_order > 1
+                AND NOT EXISTS (
+                    -- 检查前一步（step_order - 1）是否还有未完成的审核
+                    SELECT 1 FROM gh_order_audit prev
+                    WHERE prev.order_id = a.order_id
+                    AND prev.step_order = a.step_order - 1
+                    AND prev.audit_status != 'approved'
+                )
+            )
+        )
+        ORDER BY a.step_order ASC
+        LIMIT 1
+    </select>
+
+</mapper>
+

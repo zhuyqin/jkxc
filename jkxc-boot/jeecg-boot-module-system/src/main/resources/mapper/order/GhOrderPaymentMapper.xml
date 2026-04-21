@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.order.mapper.GhOrderPaymentMapper">
+
+    <!-- 根据订单ID查询收费记录列表 -->
+    <select id="getPaymentsByOrderId" resultType="org.jeecg.modules.order.entity.GhOrderPayment">
+        SELECT id, order_id, payment_time, amount, payment_method, account_number, status, remarks, image_voucher, 
+               create_by, create_time, update_by, update_time, 
+               COALESCE(del_flag, 0) as del_flag
+        FROM gh_order_payment
+        WHERE order_id = #{orderId}
+          AND (del_flag = 0 OR del_flag IS NULL)
+        ORDER BY payment_time DESC, create_time DESC
+    </select>
+
+</mapper>
+

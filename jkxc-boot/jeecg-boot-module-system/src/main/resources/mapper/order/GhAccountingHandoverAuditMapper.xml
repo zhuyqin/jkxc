@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.order.mapper.GhAccountingHandoverAuditMapper">
+
+    <!-- 根据代账交接ID查询审核记录列表（按步骤顺序排序） -->
+    <select id="getAuditsByHandoverId" resultType="org.jeecg.modules.order.entity.GhAccountingHandoverAudit">
+        SELECT * FROM gh_accounting_handover_audit
+        WHERE handover_id = #{handoverId}
+        ORDER BY step_order ASC, create_time ASC
+    </select>
+
+    <!-- 根据代账交接ID和角色ID查询待审核的记录（需要检查前一步是否已完成） -->
+    <select id="getPendingAuditByHandoverIdAndRole" resultType="org.jeecg.modules.order.entity.GhAccountingHandoverAudit">
+        SELECT a.* FROM gh_accounting_handover_audit a
+        WHERE a.handover_id = #{handoverId}
+        AND a.role_id = #{roleId}
+        <if test="auditStatus != null and auditStatus != ''">
+            AND a.audit_status = #{auditStatus}
+        </if>
+        <if test="auditStatus == null or auditStatus == ''">
+            AND a.audit_status = 'pending'
+        </if>
+        AND (
+            -- 如果是第一步（step_order = 1），直接可以审核
+            a.step_order = 1
+            OR
+            -- 如果不是第一步，需要检查前一步是否已经全部完成
+            (
+                a.step_order > 1
+                AND EXISTS (
+                    -- 前一步必须存在审核记录
+                    SELECT 1 FROM gh_accounting_handover_audit prev
+                    WHERE prev.handover_id = a.handover_id
+                    AND prev.step_order = a.step_order - 1
+                )
+                AND NOT EXISTS (
+                    -- 检查前一步（step_order - 1）是否还有未完成的审核（pending或rejected）
+                    SELECT 1 FROM gh_accounting_handover_audit prev
+                    WHERE prev.handover_id = a.handover_id
+                    AND prev.step_order = a.step_order - 1
+                    AND prev.audit_status != 'approved'
+                )
+            )
+        )
+        ORDER BY a.step_order ASC
+        LIMIT 1
+    </select>
+
+</mapper>
+

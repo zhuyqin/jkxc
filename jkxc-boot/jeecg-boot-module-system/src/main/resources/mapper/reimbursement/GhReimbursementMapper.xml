@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.reimbursement.mapper.GhReimbursementMapper">
+
+    <select id="getbxList" resultType="java.util.Map">
+
+        SELECT
+            c.name AS '报销类别',
+            ROUND(SUM(CASE WHEN MONTH(r.create_time) = 1 THEN r.total_price ELSE 0 END), 2) AS '1月份',
+            ROUND(SUM(CASE WHEN MONTH(r.create_time) = 2 THEN r.total_price ELSE 0 END), 2) AS '2月份',
+            ROUND(SUM(CASE WHEN MONTH(r.create_time) = 3 THEN r.total_price ELSE 0 END), 2) AS '3月份',
+            ROUND(SUM(CASE WHEN MONTH(r.create_time) = 4 THEN r.total_price ELSE 0 END), 2) AS '4月份',
+            ROUND(SUM(CASE WHEN MONTH(r.create_time) = 5 THEN r.total_price ELSE 0 END), 2) AS '5月份',
+            ROUND(SUM(CASE WHEN MONTH(r.create_time) = 6 THEN r.total_price ELSE 0 END), 2) AS '6月份',
+            ROUND(SUM(CASE WHEN MONTH(r.create_time) = 7 THEN r.total_price ELSE 0 END), 2) AS '7月份',
+            ROUND(SUM(CASE WHEN MONTH(r.create_time) = 8 THEN r.total_price ELSE 0 END), 2) AS '8月份',
+            ROUND(SUM(CASE WHEN MONTH(r.create_time) = 9 THEN r.total_price ELSE 0 END), 2) AS '9月份',
+            ROUND(SUM(CASE WHEN MONTH(r.create_time) = 10 THEN r.total_price ELSE 0 END), 2) AS '10月份',
+            ROUND(SUM(CASE WHEN MONTH(r.create_time) = 11 THEN r.total_price ELSE 0 END), 2) AS '11月份',
+            ROUND(SUM(CASE WHEN MONTH(r.create_time) = 12 THEN r.total_price ELSE 0 END), 2) AS '12月份',
+            ROUND(SUM(r.total_price), 2) AS '合计金额',
+            GROUP_CONCAT(DISTINCT CASE WHEN MONTH(r.create_time) = 1 THEN r.id END) AS 'ids1',
+            GROUP_CONCAT(DISTINCT CASE WHEN MONTH(r.create_time) = 2 THEN r.id END) AS 'ids2',
+            GROUP_CONCAT(DISTINCT CASE WHEN MONTH(r.create_time) = 3 THEN r.id END) AS 'ids3',
+            GROUP_CONCAT(DISTINCT CASE WHEN MONTH(r.create_time) = 4 THEN r.id END) AS 'ids4',
+            GROUP_CONCAT(DISTINCT CASE WHEN MONTH(r.create_time) = 5 THEN r.id END) AS 'ids5',
+            GROUP_CONCAT(DISTINCT CASE WHEN MONTH(r.create_time) = 6 THEN r.id END) AS 'ids6',
+            GROUP_CONCAT(DISTINCT CASE WHEN MONTH(r.create_time) = 7 THEN r.id END) AS 'ids7',
+            GROUP_CONCAT(DISTINCT CASE WHEN MONTH(r.create_time) = 8 THEN r.id END) AS 'ids8',
+            GROUP_CONCAT(DISTINCT CASE WHEN MONTH(r.create_time) = 9 THEN r.id END) AS 'ids9',
+            GROUP_CONCAT(DISTINCT CASE WHEN MONTH(r.create_time) = 10 THEN r.id END) AS 'ids10',
+            GROUP_CONCAT(DISTINCT CASE WHEN MONTH(r.create_time) = 11 THEN r.id END) AS 'ids11',
+            GROUP_CONCAT(DISTINCT CASE WHEN MONTH(r.create_time) = 12 THEN r.id END) AS 'ids12'
+        FROM
+            gh_reimbursement r
+                JOIN
+            sys_category c ON r.category = c.id
+        WHERE
+            YEAR(r.create_time) = #{year}
+        GROUP BY
+            c.name, YEAR(r.create_time)
+        ORDER BY
+            `合计金额` DESC;
+    </select>
+
+    <!-- 报销数据分析：公共条件（与列表一致：按报销时间、人员范围、类目筛选） -->
+    <sql id="analyticsWhere">
+        (r.del_flag = 0 OR r.del_flag IS NULL)
+        AND r.reimbursement_time IS NOT NULL
+        AND r.reimbursement_time &gt;= #{dateBegin}
+        AND r.reimbursement_time &lt;= #{dateEnd}
+        <if test="applyPersonFilter == true and persons != null and persons.size() &gt; 0">
+            AND r.reimbursement_person IN
+            <foreach collection="persons" item="p" open="(" separator="," close=")">
+                #{p}
+            </foreach>
+        </if>
+        <if test="onlyCategoryId != null and onlyCategoryId != ''">
+            AND r.category = #{onlyCategoryId}
+        </if>
+        <if test="excludeAddressId != null and excludeAddressId != ''">
+            AND r.category != #{excludeAddressId}
+        </if>
+        <if test="excludeSalaryId != null and excludeSalaryId != ''">
+            AND r.category != #{excludeSalaryId}
+        </if>
+    </sql>
+
+    <select id="selectAnalyticsSummary" resultType="java.util.HashMap">
+        SELECT
+            COALESCE(SUM(r.total_price), 0) AS totalAmount,
+            COUNT(*) AS totalCount,
+            COALESCE(SUM(CASE WHEN r.audit_flag = '1' THEN r.total_price ELSE 0 END), 0) AS approvedAmount,
+            COALESCE(SUM(CASE WHEN (r.audit_flag = '0' OR r.audit_flag IS NULL) THEN r.total_price ELSE 0 END), 0) AS pendingAmount,
+            COALESCE(SUM(CASE WHEN r.audit_flag = '2' THEN r.total_price ELSE 0 END), 0) AS rejectedAmount
+        FROM gh_reimbursement r
+        WHERE
+        <include refid="analyticsWhere"/>
+    </select>
+
+    <select id="selectAnalyticsByCategory" resultType="java.util.HashMap">
+        SELECT
+            c.id AS categoryId,
+            c.name AS categoryName,
+            COALESCE(SUM(r.total_price), 0) AS amount,
+            COUNT(*) AS cnt
+        FROM gh_reimbursement r
+        LEFT JOIN sys_category c ON r.category = c.id
+        WHERE
+        <include refid="analyticsWhere"/>
+        GROUP BY c.id, c.name
+        ORDER BY amount DESC
+    </select>
+
+    <select id="selectAnalyticsByMonth" resultType="java.util.HashMap">
+        SELECT
+            DATE_FORMAT(r.reimbursement_time, '%Y-%m') AS monthKey,
+            COALESCE(SUM(r.total_price), 0) AS amount,
+            COUNT(*) AS cnt
+        FROM gh_reimbursement r
+        WHERE
+        <include refid="analyticsWhere"/>
+        GROUP BY DATE_FORMAT(r.reimbursement_time, '%Y-%m')
+        ORDER BY monthKey
+    </select>
+
+    <select id="selectAnalyticsByPerson" resultType="java.util.HashMap">
+        SELECT
+            r.reimbursement_person AS personName,
+            COALESCE(SUM(r.total_price), 0) AS amount,
+            COUNT(*) AS cnt
+        FROM gh_reimbursement r
+        WHERE
+        <include refid="analyticsWhere"/>
+        AND r.reimbursement_person IS NOT NULL
+        AND r.reimbursement_person != ''
+        GROUP BY r.reimbursement_person
+        ORDER BY amount DESC
+        LIMIT 20
+    </select>
+
+    <select id="selectAnalyticsByCategoryMonth" resultType="java.util.HashMap">
+        SELECT
+            c.id AS categoryId,
+            COALESCE(c.name, '未分类') AS categoryName,
+            MONTH(r.reimbursement_time) AS monthNum,
+            COALESCE(SUM(r.total_price), 0) AS amount,
+            COUNT(*) AS cnt
+        FROM gh_reimbursement r
+        LEFT JOIN sys_category c ON r.category = c.id
+        WHERE
+        <include refid="analyticsWhere"/>
+        AND YEAR(r.reimbursement_time) = #{chartYear}
+        GROUP BY c.id, c.name, MONTH(r.reimbursement_time)
+        ORDER BY categoryName, monthNum
+    </select>
+</mapper>
+

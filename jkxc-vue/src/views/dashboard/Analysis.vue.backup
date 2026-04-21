@@ -1,0 +1,1362 @@
+<template>
+  <div class="analysis-container">
+    <!-- admin角色显示数据统计页 -->
+    <div v-if="isAdmin" class="dashboard-content">
+      <a-card :bordered="false">
+        <!-- 关键指标卡片 -->
+        <a-row :gutter="16" style="margin-bottom: 24px">
+          <a-col :span="4">
+            <a-card :bordered="false">
+              <a-statistic
+                title="今日订单"
+                :value="statistics.todayOrders"
+                suffix="单"
+                :value-style="{ color: '#1890ff', fontSize: '24px' }"
+              />
+              <div style="margin-top: 8px; color: #999; font-size: 12px">
+                金额：¥{{ formatAmount(statistics.todayAmount) }}
+              </div>
+            </a-card>
+          </a-col>
+          <a-col :span="4">
+            <a-card :bordered="false">
+              <a-statistic
+                title="本月订单"
+                :value="statistics.monthOrders"
+                suffix="单"
+                :value-style="{ color: '#52c41a', fontSize: '24px' }"
+              />
+              <div style="margin-top: 8px; color: #999; font-size: 12px">
+                金额：¥{{ formatAmount(statistics.monthAmount) }}
+              </div>
+            </a-card>
+          </a-col>
+          <a-col :span="4">
+            <a-card :bordered="false">
+              <a-statistic
+                title="本年订单"
+                :value="statistics.yearOrders"
+                suffix="单"
+                :value-style="{ color: '#fa8c16', fontSize: '24px' }"
+              />
+              <div style="margin-top: 8px; color: #999; font-size: 12px">
+                金额：¥{{ formatAmount(statistics.yearAmount) }}
+              </div>
+            </a-card>
+          </a-col>
+          <a-col :span="4">
+            <a-card :bordered="false">
+              <a-statistic
+                title="客户总数"
+                :value="statistics.totalCustomers"
+                suffix="家"
+                :value-style="{ color: '#722ed1', fontSize: '24px' }"
+              />
+            </a-card>
+          </a-col>
+          <a-col :span="4">
+            <a-card :bordered="false">
+              <a-statistic
+                title="任务完成率"
+                :value="statistics.taskCompletionRate"
+                suffix="%"
+                :precision="2"
+                :value-style="{ color: '#13c2c2', fontSize: '24px' }"
+              />
+            </a-card>
+          </a-col>
+          <a-col :span="4">
+            <a-card :bordered="false">
+              <a-statistic
+                title="业务员数量"
+                :value="statistics.salesmanCount"
+                suffix="人"
+                :value-style="{ color: '#eb2f96', fontSize: '24px' }"
+              />
+            </a-card>
+          </a-col>
+        </a-row>
+
+        <!-- 月度订单趋势 -->
+        <a-row :gutter="16" style="margin-bottom: 24px">
+          <a-col :span="24">
+            <a-card title="月度订单趋势" :bordered="false">
+              <div ref="monthlyTrendChart" style="width: 100%; height: 400px"></div>
+            </a-card>
+          </a-col>
+        </a-row>
+
+        <!-- 业务类型分布和业务员排名 -->
+        <a-row :gutter="16" style="margin-bottom: 24px">
+          <a-col :span="12">
+            <a-card title="业务类型分布" :bordered="false">
+              <div ref="businessTypeChart" style="width: 100%; height: 350px"></div>
+            </a-card>
+          </a-col>
+          <a-col :span="12">
+            <a-card title="业务员排名（Top 10）" :bordered="false">
+              <div ref="salesmanRankChart" style="width: 100%; height: 350px"></div>
+            </a-card>
+          </a-col>
+        </a-row>
+
+        <!-- 最近订单和高价值客户 -->
+        <a-row :gutter="16">
+          <a-col :span="14">
+            <a-card title="最近订单（Top 10）" :bordered="false">
+              <a-table
+                :columns="orderColumns"
+                :dataSource="recentOrders"
+                :pagination="false"
+                size="small"
+                :scroll="{ y: 300, x: 'max-content' }"
+              >
+                <template slot="amount" slot-scope="text">
+                  ¥{{ formatAmount(text) }}
+                </template>
+                <template slot="createTime" slot-scope="text">
+                  {{ formatDate(text) }}
+                </template>
+              </a-table>
+            </a-card>
+          </a-col>
+          <a-col :span="10">
+            <a-card title="高价值客户（Top 10）" :bordered="false">
+              <a-table
+                :columns="customerColumns"
+                :dataSource="topCustomers"
+                :pagination="false"
+                size="small"
+                :scroll="{ y: 300 }"
+              >
+                <template slot="value" slot-scope="text">
+                  ¥{{ formatAmount(text) }}
+                </template>
+              </a-table>
+            </a-card>
+          </a-col>
+        </a-row>
+      </a-card>
+    </div>
+
+    <!-- 其他角色显示工作台 -->
+    <div v-else-if="isEmployee" class="workbench-content">
+      <a-card :bordered="false">
+        <!-- 欢迎信息 -->
+        <a-row style="margin-bottom: 24px">
+          <a-col :span="24">
+            <a-card :bordered="false" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white">
+              <h2 style="color: white; margin: 0">
+                {{ timeFix }}，{{ username }}！
+              </h2>
+              <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0 0">
+                今天是 {{ currentDate }}，祝您工作愉快！
+              </p>
+            </a-card>
+          </a-col>
+        </a-row>
+
+        <!-- 我的统计卡片 -->
+        <a-row :gutter="16" style="margin-bottom: 24px">
+          <a-col :span="6">
+            <a-card :bordered="false">
+              <a-statistic
+                title="待办任务"
+                :value="myStatistics.pendingTasks"
+                suffix="个"
+                :value-style="{ color: '#f5222d', fontSize: '28px' }"
+              />
+              <a-button type="link" @click="handleViewTasks" style="padding: 0; margin-top: 8px">
+                查看详情 <a-icon type="right" />
+              </a-button>
+            </a-card>
+          </a-col>
+          <a-col :span="6">
+            <a-card :bordered="false">
+              <a-statistic
+                title="我的客户"
+                :value="myStatistics.myCustomers"
+                suffix="家"
+                :value-style="{ color: '#1890ff', fontSize: '28px' }"
+              />
+              <a-button type="link" @click="handleViewCustomers" style="padding: 0; margin-top: 8px">
+                查看详情 <a-icon type="right" />
+              </a-button>
+            </a-card>
+          </a-col>
+          <a-col :span="6">
+            <a-card :bordered="false">
+              <a-statistic
+                title="我的订单（本月）"
+                :value="myStatistics.myOrders"
+                suffix="单"
+                :value-style="{ color: '#52c41a', fontSize: '28px' }"
+              />
+              <a-button type="link" @click="handleViewOrders" style="padding: 0; margin-top: 8px">
+                查看详情 <a-icon type="right" />
+              </a-button>
+            </a-card>
+          </a-col>
+          <a-col :span="6">
+            <a-card :bordered="false">
+              <a-statistic
+                title="我的业绩（本月）"
+                :value="formatAmount(myStatistics.myPerformance)"
+                prefix="¥"
+                :value-style="{ color: '#fa8c16', fontSize: '28px' }"
+              />
+              <a-button type="link" @click="handleViewPerformance" style="padding: 0; margin-top: 8px">
+                查看详情 <a-icon type="right" />
+              </a-button>
+            </a-card>
+          </a-col>
+        </a-row>
+
+        <!-- 待办任务和快捷操作 -->
+        <a-row :gutter="16" style="margin-bottom: 24px">
+          <a-col :span="16">
+            <a-card title="待办任务" :bordered="false">
+              <a-tabs default-active-key="once" size="small">
+                <a-tab-pane key="once" tab="一次性任务">
+                  <a-list
+                    :dataSource="pendingTasks.oneTime"
+                    :loading="loading"
+                    :pagination="false"
+                  >
+                    <a-list-item slot="renderItem" slot-scope="item" :key="item.id">
+                      <a-list-item-meta>
+                        <a slot="title">
+                          <span v-if="item.companyName" style="font-weight: 500; color: #1890ff">
+                            {{ item.companyName }}
+                          </span>
+                          <span v-else-if="item.orderNo" style="font-weight: 500; color: #1890ff">
+                            订单：{{ item.orderNo }}
+                          </span>
+                          <span v-else>{{ item.title }}</span>
+                        </a>
+                        <span slot="description">
+                          <div v-if="item.orderNo" style="margin-top: 4px; color: #666">
+                            <a-icon type="file-text" style="margin-right: 4px" />
+                            <span>订单号：{{ item.orderNo }}</span>
+                          </div>
+                          <div v-if="item.orderCreateTime" style="margin-top: 4px">
+                            <a-icon type="calendar" style="margin-right: 4px" />
+                            <span>订单时间：{{ formatDate(item.orderCreateTime) }}</span>
+                          </div>
+                          <div style="margin-top: 4px; color: #999">
+                            <a-icon type="clock-circle" style="margin-right: 4px" />
+                            <span>任务时间：{{ formatDate(item.time) }}</span>
+                          </div>
+                        </span>
+                      </a-list-item-meta>
+                      <a-button type="link" size="small" @click="handleTask(item, 'once')">
+                        处理
+                      </a-button>
+                    </a-list-item>
+                    <template v-if="!pendingTasks.oneTime || pendingTasks.oneTime.length === 0">
+                      <a-empty description="暂无一次性待办任务" />
+                    </template>
+                  </a-list>
+                  <div style="text-align: center; margin-top: 16px">
+                    <a-button type="link" @click="handleViewOneTimeTasks">
+                      查看全部一次性任务 <a-icon type="right" />
+                    </a-button>
+                  </div>
+                </a-tab-pane>
+                <a-tab-pane key="recurring" tab="周期任务">
+                  <a-list
+                    :dataSource="pendingTasks.recurring"
+                    :loading="loading"
+                    :pagination="false"
+                  >
+                    <a-list-item slot="renderItem" slot-scope="item" :key="item.id">
+                      <a-list-item-meta>
+                        <a slot="title">
+                          <span v-if="item.companyName" style="font-weight: 500; color: #1890ff">
+                            {{ item.companyName }}
+                          </span>
+                          <span v-else-if="item.orderNo" style="font-weight: 500; color: #1890ff">
+                            订单：{{ item.orderNo }}
+                          </span>
+                          <span v-else>{{ item.title }}</span>
+                        </a>
+                        <span slot="description">
+                          <div v-if="item.orderNo" style="margin-top: 4px; color: #666">
+                            <a-icon type="file-text" style="margin-right: 4px" />
+                            <span>订单号：{{ item.orderNo }}</span>
+                          </div>
+                          <div v-if="item.orderCreateTime" style="margin-top: 4px">
+                            <a-icon type="calendar" style="margin-right: 4px" />
+                            <span>订单时间：{{ formatDate(item.orderCreateTime) }}</span>
+                          </div>
+                          <div style="margin-top: 4px; color: #999">
+                            <a-icon type="clock-circle" style="margin-right: 4px" />
+                            <span>任务时间：{{ formatDate(item.time) }}</span>
+                          </div>
+                        </span>
+                      </a-list-item-meta>
+                      <a-button type="link" size="small" @click="handleTask(item, 'recurring')">
+                        处理
+                      </a-button>
+                    </a-list-item>
+                    <template v-if="!pendingTasks.recurring || pendingTasks.recurring.length === 0">
+                      <a-empty description="暂无周期待办任务" />
+                    </template>
+                  </a-list>
+                  <div style="text-align: center; margin-top: 16px">
+                    <a-button type="link" @click="handleViewRecurringTasks">
+                      查看全部周期任务 <a-icon type="right" />
+                    </a-button>
+                  </div>
+                </a-tab-pane>
+              </a-tabs>
+            </a-card>
+          </a-col>
+          <a-col :span="8">
+            <a-card title="快捷操作" :bordered="false">
+              <a-row :gutter="16">
+                <a-col :span="12" v-for="action in quickActions" :key="action.name" style="margin-bottom: 16px">
+                  <a-button
+                    type="primary"
+                    block
+                    size="large"
+                    @click="handleQuickAction(action)"
+                    style="height: 60px; font-size: 16px"
+                  >
+                    <a-icon :type="action.icon" style="font-size: 20px; margin-right: 8px" />
+                    {{ action.name }}
+                  </a-button>
+                </a-col>
+              </a-row>
+            </a-card>
+          </a-col>
+        </a-row>
+
+        <!-- 我的订单和系统通知 -->
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-card title="我的订单（最近）" :bordered="false">
+              <a-table
+                :columns="workbenchOrderColumns"
+                :dataSource="pendingOrders"
+                :pagination="false"
+                size="small"
+                :loading="loading"
+                :scroll="{ y: 300, x: 770 }"
+                bordered
+              >
+                <template slot="amount" slot-scope="text">
+                  ¥{{ formatAmount(text) }}
+                </template>
+                <template slot="createTime" slot-scope="text">
+                  {{ formatDate(text) }}
+                </template>
+                <template slot="action" slot-scope="text, record">
+                  <a-button type="link" size="small" @click="handleViewOrder(record)">
+                    查看
+                  </a-button>
+                </template>
+              </a-table>
+              <div style="text-align: center; margin-top: 16px">
+                <a-button type="link" @click="handleViewAllOrders">
+                  查看全部订单 <a-icon type="right" />
+                </a-button>
+          </div>
+            </a-card>
+          </a-col>
+          <a-col :span="12">
+            <a-card title="系统通知" :bordered="false">
+              <a-list
+                :dataSource="notifications"
+                :loading="loading"
+                :pagination="false"
+              >
+                <a-list-item slot="renderItem" slot-scope="item">
+                  <a-list-item-meta>
+                    <a slot="title">{{ item.content }}</a>
+                    <span slot="description">{{ formatDate(item.time) }}</span>
+                  </a-list-item-meta>
+                </a-list-item>
+                <a-empty v-if="notifications.length === 0" description="暂无通知" />
+              </a-list>
+            </a-card>
+          </a-col>
+        </a-row>
+      </a-card>
+        </div>
+
+    <!-- 如果角色判断中，显示加载状态 -->
+    <div v-else-if="roleChecking" class="loading-container">
+      <a-spin size="large" tip="加载中...">
+        <div style="min-height: 400px"></div>
+      </a-spin>
+    </div>
+    <!-- 如果无法判断角色，默认显示工作台 -->
+    <div v-else class="workbench-content">
+      <a-card :bordered="false">
+        <a-empty description="无法获取用户角色信息，请刷新页面重试" />
+      </a-card>
+    </div>
+  </div>
+</template>
+
+<script>
+  import { getAction } from '@/api/manage'
+  import moment from 'moment'
+  import * as echarts from 'echarts'
+
+  export default {
+    name: "Analysis",
+    data() {
+      return {
+        isAdmin: false,
+        isEmployee: false,
+        roleChecking: true, // 角色判断中，避免显示图片轮播
+        loading: false,
+        username: '',
+        currentDate: '',
+        timeFix: '',
+        // Dashboard 数据
+        statistics: {
+          todayOrders: 0,
+          todayAmount: 0,
+          monthOrders: 0,
+          monthAmount: 0,
+          yearOrders: 0,
+          yearAmount: 0,
+          totalCustomers: 0,
+          taskCompletionRate: 0,
+          salesmanCount: 0,
+        },
+        monthlyTrend: [],
+        businessTypeDistribution: [],
+        salesmanRank: [],
+        recentOrders: [],
+        topCustomers: [],
+        charts: {
+          monthlyTrend: null,
+          businessType: null,
+          salesmanRank: null,
+        },
+        orderColumns: [
+          {
+            title: '订单号',
+            dataIndex: 'orderNo',
+            key: 'orderNo',
+            width: 130,
+          },
+          {
+            title: '客户名称',
+            dataIndex: 'companyName',
+            key: 'companyName',
+            width: 300,
+            ellipsis: {
+              showTitle: true,
+            },
+          },
+          {
+            title: '金额',
+            dataIndex: 'amount',
+            key: 'amount',
+            width: 120,
+            align: 'right',
+            scopedSlots: { customRender: 'amount' },
+          },
+          {
+            title: '创建时间',
+            dataIndex: 'createTime',
+            key: 'createTime',
+            width: 160,
+            scopedSlots: { customRender: 'createTime' },
+          },
+        ],
+        customerColumns: [
+          {
+            title: '客户名称',
+            dataIndex: 'companyName',
+            key: 'companyName',
+          },
+          {
+            title: '客户价值',
+            dataIndex: 'value',
+            key: 'value',
+            width: 150,
+            scopedSlots: { customRender: 'value' },
+          },
+        ],
+        // Workbench 数据
+        myStatistics: {
+          pendingTasks: 0,
+          myCustomers: 0,
+          myOrders: 0,
+          myPerformance: 0,
+        },
+        pendingTasks: {
+          oneTime: [],
+          recurring: []
+        },
+        menuRoutes: {}, // 存储从菜单中获取的路由映射
+        pendingOrders: [],
+        quickActions: [],
+        notifications: [],
+        workbenchOrderColumns: [
+          {
+            title: '订单号',
+            dataIndex: 'orderNo',
+            key: 'orderNo',
+            width: 130,
+            fixed: 'left',
+          },
+          {
+            title: '客户名称',
+            dataIndex: 'companyName',
+            key: 'companyName',
+            width: 280,
+            ellipsis: {
+              showTitle: true,
+            },
+          },
+          {
+            title: '金额',
+            dataIndex: 'amount',
+            key: 'amount',
+            width: 120,
+            align: 'right',
+            scopedSlots: { customRender: 'amount' },
+          },
+          {
+            title: '创建时间',
+            dataIndex: 'createTime',
+            key: 'createTime',
+            width: 160,
+            scopedSlots: { customRender: 'createTime' },
+          },
+          {
+            title: '操作',
+            key: 'action',
+            width: 80,
+            fixed: 'right',
+            scopedSlots: { customRender: 'action' },
+          },
+        ],
+      }
+    },
+    created() {
+      // 延迟执行，确保用户信息已加载
+      this.$nextTick(() => {
+        this.checkUserRole()
+        // 加载菜单路由
+        this.loadMenuRoutes()
+      })
+    },
+    mounted() {
+      // 如果角色判断还未完成，等待一下
+      if (!this.isAdmin && !this.isEmployee) {
+        // 延迟执行，确保角色判断完成
+        setTimeout(() => {
+          if (this.isAdmin) {
+            this.initCharts()
+            this.loadDashboardData()
+          } else if (this.isEmployee) {
+            this.initTime()
+            this.loadWorkbenchData()
+          }
+        }, 100)
+      } else {
+        if (this.isAdmin) {
+          this.initCharts()
+          this.loadDashboardData()
+        } else if (this.isEmployee) {
+          this.initTime()
+          this.loadWorkbenchData()
+        }
+      }
+      window.addEventListener('resize', this.handleResize)
+    },
+    beforeDestroy() {
+      window.removeEventListener('resize', this.handleResize)
+      Object.values(this.charts).forEach((chart) => {
+        if (chart) {
+          chart.dispose()
+        }
+      })
+    },
+    methods: {
+      async checkUserRole() {
+        console.log('开始检查用户角色...')
+        this.roleChecking = true // 开始角色判断
+        try {
+          // 直接通过API获取角色编码进行判断，不依赖菜单数据
+          await this.checkRoleByAPI()
+          
+          console.log('角色检查完成，isAdmin:', this.isAdmin, 'isEmployee:', this.isEmployee)
+          
+          // 根据角色加载对应数据
+          this.$nextTick(() => {
+            if (this.isAdmin) {
+              console.log('初始化Dashboard数据...')
+              this.initCharts()
+              this.loadDashboardData()
+            } else if (this.isEmployee) {
+              console.log('初始化Workbench数据...')
+              this.initTime()
+              this.loadWorkbenchData()
+            }
+            this.roleChecking = false // 角色判断完成
+          })
+        } catch (error) {
+          console.error('获取用户角色失败:', error)
+          // 如果获取失败，默认显示工作台
+          this.isAdmin = false
+          this.isEmployee = true
+          this.roleChecking = false // 角色判断完成
+          this.$nextTick(() => {
+            this.initTime()
+            this.loadWorkbenchData()
+          })
+        }
+      },
+      async checkRoleByAPI() {
+        console.log('=== 开始通过API获取角色编码 ===')
+        try {
+          const userInfo = this.$store.getters.userInfo || JSON.parse(localStorage.getItem('Login_Userinfo') || '{}')
+          console.log('用户信息:', userInfo)
+          
+          const userId = userInfo.id || userInfo.userId
+          console.log('用户ID:', userId)
+          
+          if (userId) {
+            // 获取用户角色ID
+            console.log('调用 /sys/user/queryUserRole，参数:', { userid: userId })
+            const res = await getAction('/sys/user/queryUserRole', { userid: userId })
+            console.log('queryUserRole返回:', res)
+            
+            if (res.success && res.result && res.result.length > 0) {
+              const roleIds = Array.isArray(res.result) ? res.result : [res.result]
+              console.log('用户角色ID列表:', roleIds)
+              
+              // 通过角色ID获取角色编码
+              const roleCodes = []
+              for (const roleId of roleIds) {
+                try {
+                  console.log(`正在获取角色ID ${roleId} 的详情...`)
+                  const roleRes = await getAction('/sys/role/queryById', { id: roleId })
+                  console.log(`角色ID ${roleId} 的详情:`, roleRes)
+                  
+                  if (roleRes.success && roleRes.result) {
+                    const roleCode = roleRes.result.roleCode || roleRes.result.role_code
+                    console.log(`角色ID ${roleId} 的角色编码:`, roleCode)
+                    if (roleCode) {
+                      roleCodes.push(roleCode)
+                    }
+                  }
+                } catch (e) {
+                  console.warn(`获取角色ID ${roleId} 信息失败:`, e)
+                }
+              }
+              
+              console.log('角色编码列表:', roleCodes)
+              
+              // 检查是否有admin角色（不区分大小写）
+              this.isAdmin = roleCodes.some(code => {
+                const codeStr = code ? code.toString().toLowerCase() : ''
+                console.log(`检查角色编码 "${code}" (转换为小写: "${codeStr}") 是否为 admin`)
+                return codeStr === 'admin'
+              })
+              this.isEmployee = !this.isAdmin && roleCodes.length > 0
+              
+              console.log('=== 最终判断结果 ===', { 
+                roleCodes, 
+                isAdmin: this.isAdmin, 
+                isEmployee: this.isEmployee 
+              })
+            } else {
+              console.warn('无法获取用户角色，默认显示工作台')
+              this.isAdmin = false
+              this.isEmployee = true
+            }
+          } else {
+            console.warn('无法获取用户ID，默认显示工作台')
+            this.isAdmin = false
+            this.isEmployee = true
+          }
+        } catch (error) {
+          console.error('通过API获取角色失败:', error)
+          console.error('错误详情:', error.stack)
+          this.isAdmin = false
+          this.isEmployee = true
+        } finally {
+          this.roleChecking = false // 确保角色判断完成
+        }
+      },
+      initTime() {
+        const hour = new Date().getHours()
+        if (hour < 9) {
+          this.timeFix = '早上好'
+        } else if (hour < 12) {
+          this.timeFix = '上午好'
+        } else if (hour < 14) {
+          this.timeFix = '中午好'
+        } else if (hour < 17) {
+          this.timeFix = '下午好'
+        } else if (hour < 19) {
+          this.timeFix = '傍晚好'
+        } else {
+          this.timeFix = '晚上好'
+        }
+        this.currentDate = moment().format('YYYY年MM月DD日 dddd')
+      },
+      initCharts() {
+        this.$nextTick(() => {
+          if (this.$refs.monthlyTrendChart) {
+            this.charts.monthlyTrend = echarts.init(this.$refs.monthlyTrendChart)
+          }
+          if (this.$refs.businessTypeChart) {
+            this.charts.businessType = echarts.init(this.$refs.businessTypeChart)
+          }
+          if (this.$refs.salesmanRankChart) {
+            this.charts.salesmanRank = echarts.init(this.$refs.salesmanRankChart)
+          }
+        })
+      },
+      handleResize() {
+        Object.values(this.charts).forEach((chart) => {
+          if (chart) {
+            chart.resize()
+          }
+        })
+      },
+      async loadDashboardData() {
+        this.loading = true
+        try {
+          const res = await getAction('/dashboard/getStatistics')
+          if (res.success && res.result) {
+            this.statistics = res.result.statistics || this.statistics
+            this.monthlyTrend = res.result.monthlyTrend || []
+            this.businessTypeDistribution = res.result.businessTypeDistribution || []
+            this.salesmanRank = res.result.salesmanRank || []
+            this.recentOrders = res.result.recentOrders || []
+            this.topCustomers = res.result.topCustomers || []
+            this.updateCharts()
+          } else {
+            this.$message.warning(res.message || '获取统计数据失败')
+          }
+        } catch (error) {
+          console.error('加载数据失败:', error)
+          this.$message.error('加载数据失败')
+        } finally {
+          this.loading = false
+        }
+      },
+      async loadWorkbenchData() {
+        this.loading = true
+        try {
+          const userInfo = this.$store.getters.userInfo
+          if (userInfo && userInfo.realname) {
+            this.username = userInfo.realname
+          }
+
+          // 确保菜单路由已加载
+          if (Object.keys(this.menuRoutes).length === 0) {
+            await this.loadMenuRoutes()
+          }
+
+          const res = await getAction('/dashboard/getWorkbench')
+          if (res.success && res.result) {
+            this.myStatistics = res.result.myStatistics || this.myStatistics
+            // 处理分类的待办任务
+            console.log('后端返回的pendingTasks数据:', res.result.pendingTasks)
+            console.log('pendingTasks类型:', typeof res.result.pendingTasks)
+            console.log('pendingTasks是否为数组:', Array.isArray(res.result.pendingTasks))
+            
+            // 保存原始数据用于调试
+            this.debugPendingTasks = res.result.pendingTasks
+            
+            if (res.result.pendingTasks) {
+              // 兼容不同的key命名（可能是驼峰或下划线）
+              const pendingTasksData = res.result.pendingTasks
+              
+              // 检查数据结构
+              console.log('pendingTasksData keys:', Object.keys(pendingTasksData))
+              console.log('pendingTasksData.oneTime:', pendingTasksData.oneTime)
+              console.log('pendingTasksData.recurring:', pendingTasksData.recurring)
+              
+              // 确保是对象而不是数组
+              if (Array.isArray(pendingTasksData)) {
+                console.warn('pendingTasks是数组，不是对象，尝试转换')
+                this.$set(this, 'pendingTasks', { oneTime: [], recurring: [] })
+              } else {
+                // 提取数据
+                const oneTimeList = Array.isArray(pendingTasksData.oneTime) ? pendingTasksData.oneTime : 
+                                  (Array.isArray(pendingTasksData.one_time) ? pendingTasksData.one_time : [])
+                const recurringList = Array.isArray(pendingTasksData.recurring) ? pendingTasksData.recurring : 
+                                    (Array.isArray(pendingTasksData.recurring_task) ? pendingTasksData.recurring_task : [])
+                
+                // 使用Vue.set确保响应式更新，直接替换整个对象
+                this.$set(this, 'pendingTasks', {
+                  oneTime: oneTimeList,
+                  recurring: recurringList
+                })
+              }
+              
+              console.log('处理后的pendingTasks:', this.pendingTasks)
+              console.log('oneTime数量:', this.pendingTasks.oneTime.length)
+              console.log('recurring数量:', this.pendingTasks.recurring.length)
+            } else {
+              console.warn('pendingTasks为空，使用默认值')
+              this.pendingTasks = { oneTime: [], recurring: [] }
+            }
+            this.pendingOrders = res.result.pendingOrders || []
+            // 从菜单中获取快捷操作的正确路由
+            this.quickActions = this.buildQuickActions(res.result.quickActions || [])
+            this.notifications = res.result.notifications || []
+          } else {
+            this.$message.warning(res.message || '获取工作台数据失败')
+          }
+        } catch (error) {
+          console.error('加载数据失败:', error)
+          this.$message.error('加载数据失败')
+        } finally {
+          this.loading = false
+        }
+      },
+      updateCharts() {
+        this.updateMonthlyTrendChart()
+        this.updateBusinessTypeChart()
+        this.updateSalesmanRankChart()
+      },
+      updateMonthlyTrendChart() {
+        if (!this.charts.monthlyTrend) return
+        const data = this.monthlyTrend || []
+        const option = {
+          tooltip: {
+            trigger: 'axis',
+            axisPointer: {
+              type: 'cross',
+            },
+          },
+          legend: {
+            data: ['订单数', '订单金额'],
+          },
+          grid: {
+            left: '3%',
+            right: '4%',
+            bottom: '3%',
+            containLabel: true,
+          },
+          xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: data.map((item) => item.month),
+          },
+          yAxis: [
+            {
+              type: 'value',
+              name: '订单数',
+              position: 'left',
+            },
+            {
+              type: 'value',
+              name: '订单金额',
+              position: 'right',
+              axisLabel: {
+                formatter: (value) => {
+                  if (value >= 10000) {
+                    return (value / 10000).toFixed(1) + '万'
+                  }
+                  return value
+                },
+              },
+            },
+          ],
+          series: [
+            {
+              name: '订单数',
+              type: 'line',
+              data: data.map((item) => item.orders),
+              smooth: true,
+              itemStyle: {
+                color: '#1890ff',
+              },
+            },
+            {
+              name: '订单金额',
+              type: 'line',
+              yAxisIndex: 1,
+              data: data.map((item) => item.amount),
+              smooth: true,
+              itemStyle: {
+                color: '#52c41a',
+              },
+            },
+          ],
+        }
+        this.charts.monthlyTrend.setOption(option)
+      },
+      updateBusinessTypeChart() {
+        if (!this.charts.businessType) return
+        const data = this.businessTypeDistribution || []
+        const option = {
+          tooltip: {
+            trigger: 'item',
+            formatter: '{a} <br/>{b}: {c} ({d}%)',
+          },
+          legend: {
+            orient: 'vertical',
+            left: 'left',
+            data: data.map((item) => item.name),
+          },
+          series: [
+            {
+              name: '业务类型',
+              type: 'pie',
+              radius: ['40%', '70%'],
+              avoidLabelOverlap: false,
+              label: {
+                show: false,
+                position: 'center',
+              },
+              emphasis: {
+                label: {
+                  show: true,
+                  fontSize: '20',
+                  fontWeight: 'bold',
+                },
+              },
+              labelLine: {
+                show: false,
+              },
+              data: data.map((item) => ({
+                value: item.count,
+                name: item.name,
+              })),
+            },
+          ],
+        }
+        this.charts.businessType.setOption(option)
+      },
+      updateSalesmanRankChart() {
+        if (!this.charts.salesmanRank) return
+        const data = this.salesmanRank || []
+        const option = {
+          tooltip: {
+            trigger: 'axis',
+            axisPointer: {
+              type: 'shadow',
+            },
+          },
+          grid: {
+            left: '15%',
+            right: '10%',
+            bottom: '3%',
+            top: '5%',
+            containLabel: false,
+          },
+          xAxis: {
+            type: 'value',
+          },
+          yAxis: {
+            type: 'category',
+            data: data.map((item) => item.salesman),
+            inverse: true,
+          },
+          series: [
+            {
+              name: '订单数',
+              type: 'bar',
+              data: data.map((item) => item.orders),
+              barWidth: '60%',
+              itemStyle: {
+                borderRadius: [0, 4, 4, 0],
+                color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                  { offset: 0, color: '#83bff6' },
+                  { offset: 0.5, color: '#188df0' },
+                  { offset: 1, color: '#0050b3' },
+                ]),
+              },
+              label: {
+                show: true,
+                position: 'right',
+                color: '#1890ff',
+                fontWeight: 'bold',
+              },
+            },
+          ],
+        }
+        this.charts.salesmanRank.setOption(option)
+      },
+      handleQuickAction(action) {
+        if (action.path) {
+          this.$router.push(action.path)
+        }
+      },
+      // 从菜单数据中加载路由映射
+      async loadMenuRoutes() {
+        try {
+          // 如果权限列表为空，尝试从store获取
+          let permissionList = this.$store.getters.permissionList || []
+          
+          // 如果还是为空，等待一下再试
+          if (permissionList.length === 0) {
+            await new Promise(resolve => setTimeout(resolve, 100))
+            permissionList = this.$store.getters.permissionList || []
+          }
+          
+          const routeMap = {}
+          
+          // 递归查找菜单中的路由
+          const findRoutes = (menuList) => {
+            if (!menuList || !Array.isArray(menuList)) return
+            for (const menu of menuList) {
+              if (menu.path && menu.meta && menu.meta.title) {
+                // 存储路由映射，支持通过标题查找
+                const title = menu.meta.title
+                routeMap[title] = menu.path
+                
+                // 也通过组件名存储（去掉views/前缀，转换为路径格式）
+                if (menu.component) {
+                  let componentPath = menu.component
+                  // 如果component是类似 "system/OneTimeTaskList"，转换为路径
+                  if (componentPath.includes('/')) {
+                    const parts = componentPath.split('/')
+                    const componentName = parts[parts.length - 1]
+                    // 存储组件名到路径的映射
+                    routeMap[componentName] = menu.path
+                  }
+                }
+              }
+              if (menu.children && menu.children.length > 0) {
+                findRoutes(menu.children)
+              }
+            }
+          }
+          
+          findRoutes(permissionList)
+          this.menuRoutes = routeMap
+          console.log('菜单路由映射:', routeMap)
+        } catch (error) {
+          console.error('加载菜单路由失败:', error)
+          this.menuRoutes = {}
+        }
+      },
+      // 构建快捷操作，使用菜单中的路由
+      buildQuickActions(backendActions) {
+        // 定义操作名称到可能的菜单标题的映射
+        const actionRouteMap = {
+          '创建订单': ['订单管理', '订单', 'GhOrder', 'ghOrder'],
+          '添加客户': ['客户管理', '客户', 'GhCustomer', 'ghCustomer'],
+          '创建任务': ['任务管理', '任务', 'BusinessTask', 'businessTask'],
+          '查看报表': ['订单分析', '新订单分析', 'NewOrderAnalysis', 'new-order-analysis']
+        }
+        
+        return backendActions.map(action => {
+          // 尝试从菜单路由中查找
+          let routePath = action.path
+          
+          // 根据操作名称查找对应的菜单标题
+          const menuTitles = actionRouteMap[action.name] || []
+          for (const title of menuTitles) {
+            if (this.menuRoutes[title]) {
+              routePath = this.menuRoutes[title]
+              // 如果是添加/创建操作，添加/add后缀
+              if (action.name.includes('创建') || action.name.includes('添加')) {
+                routePath = routePath.endsWith('/add') ? routePath : routePath + '/add'
+              }
+              break
+            }
+          }
+          
+          // 如果没找到，使用后端返回的默认路径
+          if (!routePath || routePath === action.path) {
+            routePath = action.path
+          }
+          
+          return {
+            ...action,
+            path: routePath
+          }
+        })
+      },
+      async handleTask(task, taskType) {
+        // 确保菜单路由已加载
+        if (Object.keys(this.menuRoutes).length === 0) {
+          await this.loadMenuRoutes()
+        }
+        
+        const query = {}
+        
+        // 根据任务类型跳转到不同的页面
+        if (taskType === 'recurring') {
+          // 周期任务：跳转到周期任务列表页面，待审核tab
+          let routePath = this.menuRoutes['周期任务'] || 
+                         this.menuRoutes['RecurringTaskList'] || 
+                         '/system/recurringTaskList'
+          
+          // 使用订单号筛选
+          if (task.orderNo) {
+            query.orderNo = task.orderNo
+          }
+          
+          // 设置默认tab为待审核
+          query.tab = 'pending'
+          
+          console.log('跳转到周期任务页面:', { path: routePath, query })
+          
+          this.$router.push({
+            path: routePath,
+            query: query,
+          }).catch(err => {
+            console.error('路由跳转失败:', err, { path: routePath, query })
+            this.$message.error('无法跳转到周期任务页面，路径：' + routePath)
+          })
+        } else if (taskType === 'once') {
+          // 一次性任务：跳转到一次性任务列表页面，待审核tab
+          let routePath = this.menuRoutes['一次性任务'] || 
+                         this.menuRoutes['OneTimeTaskList'] || 
+                         '/system/oneTimeTaskList'
+          
+          // 使用订单号筛选
+          if (task.orderNo) {
+            query.orderNo = task.orderNo
+          }
+          
+          // 设置默认tab为待审核
+          query.tab = 'pending'
+          
+          console.log('跳转到一次性任务页面:', { path: routePath, query })
+          
+          this.$router.push({
+            path: routePath,
+            query: query,
+          }).catch(err => {
+            console.error('路由跳转失败:', err, { path: routePath, query })
+            this.$message.error('无法跳转到一次性任务页面，路径：' + routePath)
+          })
+        } else {
+          // 其他情况：跳转到工商任务中心
+          let routePath = this.menuRoutes['任务中心'] || 
+                         this.menuRoutes['工商任务'] || 
+                         this.menuRoutes['任务管理'] ||
+                         this.menuRoutes['BusinessTaskList'] || 
+                         this.menuRoutes['businessTask'] ||
+                         '/order/businessTask'
+          
+          // 使用订单号筛选
+          if (task.orderNo) {
+            query.orderNo = task.orderNo
+          }
+          
+          query.tab = 'task'
+          
+          console.log('跳转到任务中心:', { path: routePath, query })
+          
+          this.$router.push({
+            path: routePath,
+            query: query,
+          }).catch(err => {
+            console.error('路由跳转失败:', err, { path: routePath, query })
+            this.$message.error('无法跳转到任务中心，路径：' + routePath)
+          })
+        }
+      },
+      handleViewOneTimeTasks() {
+        const routePath = this.menuRoutes['一次性任务'] || 
+                         this.menuRoutes['OneTimeTaskList'] || 
+                         '/system/oneTimeTaskList'
+        this.$router.push(routePath)
+      },
+      handleViewRecurringTasks() {
+        const routePath = this.menuRoutes['周期任务'] || 
+                         this.menuRoutes['RecurringTaskList'] || 
+                         '/system/recurringTaskList'
+        this.$router.push(routePath)
+      },
+      async handleViewOrder(record) {
+        // 确保菜单路由已加载
+        if (Object.keys(this.menuRoutes).length === 0) {
+          await this.loadMenuRoutes()
+        }
+        
+        // 从菜单路由中获取订单管理的路径
+        let routePath = this.menuRoutes['订单管理'] || 
+                        this.menuRoutes['订单'] || 
+                        this.menuRoutes['GhOrder'] || 
+                        this.menuRoutes['ghOrder'] ||
+                        null
+        
+        // 如果菜单路由中没有找到，尝试从权限列表中查找
+        if (!routePath) {
+          const permissionList = this.$store.getters.permissionList || []
+          const findRoute = (menuList) => {
+            for (const menu of menuList) {
+              if (menu.path && menu.meta && menu.meta.title) {
+                const title = menu.meta.title
+                // 检查是否是订单相关的菜单
+                if (title.includes('订单') || title.includes('Order') || 
+                    (menu.component && menu.component.includes('GhOrder'))) {
+                  return menu.path
+                }
+              }
+              if (menu.children && menu.children.length > 0) {
+                const childRoute = findRoute(menu.children)
+                if (childRoute) return childRoute
+              }
+            }
+            return null
+          }
+          routePath = findRoute(permissionList)
+        }
+        
+        // 如果还是没找到，使用默认路径
+        if (!routePath) {
+          routePath = '/order/ghOrder'
+        }
+        
+        this.$router.push({
+          path: routePath,
+          query: { id: record.id },
+        }).catch(err => {
+          console.error('路由跳转失败:', err, { path: routePath })
+          this.$message.error('无法跳转到订单页面，路径：' + routePath)
+        })
+      },
+      async handleViewTasks() {
+        // 确保菜单路由已加载
+        if (Object.keys(this.menuRoutes).length === 0) {
+          await this.loadMenuRoutes()
+        }
+        
+        const routePath = this.menuRoutes['任务中心'] || 
+                         this.menuRoutes['工商任务'] || 
+                         this.menuRoutes['任务管理'] ||
+                         '/order/businessTask'
+        
+        this.$router.push(routePath).catch(err => {
+          console.error('路由跳转失败:', err)
+        })
+      },
+      async handleViewCustomers() {
+        // 确保菜单路由已加载
+        if (Object.keys(this.menuRoutes).length === 0) {
+          await this.loadMenuRoutes()
+        }
+        
+        const routePath = this.menuRoutes['客户管理'] || 
+                         this.menuRoutes['客户'] || 
+                         this.menuRoutes['GhCustomer'] ||
+                         '/customer/ghCustomer'
+        
+        this.$router.push(routePath).catch(err => {
+          console.error('路由跳转失败:', err)
+        })
+      },
+      async handleViewOrders() {
+        // 确保菜单路由已加载
+        if (Object.keys(this.menuRoutes).length === 0) {
+          await this.loadMenuRoutes()
+        }
+        
+        const routePath = this.menuRoutes['订单管理'] || 
+                         this.menuRoutes['订单'] || 
+                         this.menuRoutes['GhOrder'] ||
+                         '/order/ghOrder'
+        
+        this.$router.push(routePath).catch(err => {
+          console.error('路由跳转失败:', err)
+        })
+      },
+      handleViewPerformance() {
+        this.$router.push('/operation-analysis/new-order-analysis')
+      },
+      handleViewAllTasks() {
+        this.$router.push('/order/businessTask')
+      },
+      handleViewAllOrders() {
+        this.$router.push('/order/ghOrder')
+      },
+      formatAmount(amount) {
+        if (!amount) return '0.00'
+        const num = typeof amount === 'string' ? parseFloat(amount) : amount
+        if (num >= 10000) {
+          return (num / 10000).toFixed(2) + '万'
+        }
+        return num.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      },
+      formatDate(date) {
+        if (!date) return ''
+        return moment(date).format('YYYY-MM-DD HH:mm')
+      }
+    }
+  }
+</script>
+
+<style scoped>
+  .analysis-container {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    min-height: calc(100vh - 64px);
+  }
+
+  .dashboard-content,
+  .workbench-content {
+    padding: 24px;
+    background: #f0f2f5;
+    min-height: calc(100vh - 64px);
+  }
+
+  .loading-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 64px);
+    background: #f0f2f5;
+  }
+
+  /* 确保表格表头固定 */
+  :deep(.ant-card-body) {
+    .ant-table-wrapper {
+      .ant-table {
+        .ant-table-header {
+          overflow: visible !important;
+        }
+        .ant-table-body {
+          overflow-y: auto !important;
+        }
+        .ant-table-thead {
+          position: sticky;
+          top: 0;
+          z-index: 10;
+          background: #fafafa;
+        }
+      }
+    }
+  }
+
+  /* 优化工作台订单表格样式 */
+  .workbench-content {
+    :deep(.ant-table) {
+      .ant-table-tbody > tr > td {
+        padding: 12px 16px;
+      }
+      .ant-table-thead > tr > th {
+        padding: 12px 16px;
+        font-weight: 600;
+        background: #fafafa;
+      }
+      /* 客户名称列样式优化 - 允许换行显示完整名称 */
+      .ant-table-tbody > tr > td:nth-child(2) {
+        max-width: 300px;
+        word-break: break-all;
+        white-space: normal;
+        line-height: 1.5;
+      }
+      /* 表格边框优化 */
+      &.ant-table-bordered {
+        .ant-table-tbody > tr > td {
+          border-right: 1px solid #f0f0f0;
+        }
+      }
+    }
+  }
+</style>

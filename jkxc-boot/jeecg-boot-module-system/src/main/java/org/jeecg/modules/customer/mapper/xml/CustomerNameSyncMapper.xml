@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.customer.mapper.CustomerNameSyncMapper">
+
+    <!-- 更新商机表的公司名称（通过客户关联表） -->
+    <update id="updateOpportunityNameByCustomerId">
+        UPDATE gh_opportunity opp
+        INNER JOIN gh_customer_relation cr ON opp.id = cr.opportunity_id
+        SET opp.corporate_name = #{newCorporateName},
+            opp.update_time = NOW(),
+            opp.update_by = 'customer_name_sync'
+        WHERE cr.customer_id = #{customerId}
+          AND opp.del_flag = 0
+    </update>
+    
+    <!-- 检查数据一致性 - 订单表 -->
+    <select id="checkOrderConsistency" resultType="java.util.Map">
+        SELECT 
+            o.id AS order_id,
+            o.order_no,
+            o.company_name AS current_name,
+            c.corporate_name AS correct_name
+        FROM gh_order o
+        INNER JOIN gh_customer c ON o.company_id = c.id
+        WHERE o.company_name != c.corporate_name
+          AND o.del_flag = 0
+          AND c.del_flag = 0
+        LIMIT 100
+    </select>
+    
+    <!-- 检查数据一致性 - 代账合同表 -->
+    <select id="checkContractConsistency" resultType="java.util.Map">
+        SELECT 
+            ac.id AS contract_id,
+            ac.contract_no,
+            ac.company_name AS current_name,
+            c.corporate_name AS correct_name
+        FROM gh_accounting_contract ac
+        INNER JOIN gh_order o ON ac.order_id = o.id
+        INNER JOIN gh_customer c ON o.company_id = c.id
+        WHERE ac.company_name != c.corporate_name
+          AND ac.del_flag = 0
+          AND o.del_flag = 0
+          AND c.del_flag = 0
+        LIMIT 100
+    </select>
+    
+    <!-- 检查数据一致性 - 地址中心表 -->
+    <select id="checkAddressConsistency" resultType="java.util.Map">
+        SELECT 
+            ac.id AS address_id,
+            ac.company_name AS current_name,
+            c.corporate_name AS correct_name
+        FROM gh_address_center ac
+        INNER JOIN gh_customer c ON ac.data_id = c.id
+        WHERE ac.company_name != c.corporate_name
+          AND ac.del_flag = 0
+          AND c.del_flag = 0
+        LIMIT 100
+    </select>
+    
+    <!-- 检查数据一致性 - 银行日记账表 -->
+    <select id="checkBankDiaryConsistency" resultType="java.util.Map">
+        SELECT 
+            bd.id AS diary_id,
+            bd.company_name AS current_name,
+            c.corporate_name AS correct_name
+        FROM gh_bank_diary bd
+        INNER JOIN gh_customer c ON bd.company_id = c.id
+        WHERE bd.company_name != c.corporate_name
+          AND bd.del_flag = 0
+          AND c.del_flag = 0
+        LIMIT 100
+    </select>
+    
+    <!-- 统计不一致的记录数 -->
+    <select id="countInconsistentRecords" resultType="java.util.Map">
+        SELECT 
+            '订单表' AS table_name,
+            COUNT(*) AS inconsistent_count
+        FROM gh_order o
+        INNER JOIN gh_customer c ON o.company_id = c.id
+        WHERE o.company_name != c.corporate_name
+          AND o.del_flag = 0
+          AND c.del_flag = 0
+        
+        UNION ALL
+        
+        SELECT 
+            '代账合同表' AS table_name,
+            COUNT(*) AS inconsistent_count
+        FROM gh_accounting_contract ac
+        INNER JOIN gh_order o ON ac.order_id = o.id
+        INNER JOIN gh_customer c ON o.company_id = c.id
+        WHERE ac.company_name != c.corporate_name
+          AND ac.del_flag = 0
+          AND o.del_flag = 0
+          AND c.del_flag = 0
+        
+        UNION ALL
+        
+        SELECT 
+            '地址中心表' AS table_name,
+            COUNT(*) AS inconsistent_count
+        FROM gh_address_center ac
+        INNER JOIN gh_customer c ON ac.data_id = c.id
+        WHERE ac.company_name != c.corporate_name
+          AND ac.del_flag = 0
+          AND c.del_flag = 0
+        
+        UNION ALL
+        
+        SELECT 
+            '银行日记账表' AS table_name,
+            COUNT(*) AS inconsistent_count
+        FROM gh_bank_diary bd
+        INNER JOIN gh_customer c ON bd.company_id = c.id
+        WHERE bd.company_name != c.corporate_name
+          AND bd.del_flag = 0
+          AND c.del_flag = 0
+        
+        UNION ALL
+        
+        SELECT 
+            '报销表' AS table_name,
+            COUNT(*) AS inconsistent_count
+        FROM gh_reimbursement r
+        INNER JOIN gh_customer c ON r.company_id = c.id
+        WHERE r.company_name != c.corporate_name
+          AND r.del_flag = 0
+          AND c.del_flag = 0
+    </select>
+
+</mapper>

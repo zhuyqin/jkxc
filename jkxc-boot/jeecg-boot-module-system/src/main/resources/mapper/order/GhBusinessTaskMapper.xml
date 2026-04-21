@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.order.mapper.GhBusinessTaskMapper">
+
+    <!-- 根据订单ID查询工商任务 -->
+    <select id="getTaskByOrderId" resultType="org.jeecg.modules.order.entity.GhBusinessTask">
+        SELECT * FROM gh_business_task
+        WHERE order_id = #{orderId}
+        AND del_flag = 0
+        LIMIT 1
+    </select>
+
+    <!-- 根据任务状态和用户ID查询任务列表 -->
+    <select id="getTasksByStatus" resultType="org.jeecg.modules.order.entity.GhBusinessTask">
+        SELECT * FROM gh_business_task
+        WHERE del_flag = 0
+        <if test="taskStatus != null and taskStatus != ''">
+            AND task_status = #{taskStatus}
+        </if>
+        <if test="userId != null and userId != ''">
+            AND (assigned_user_id = #{userId} OR received_user_id = #{userId})
+        </if>
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>
+

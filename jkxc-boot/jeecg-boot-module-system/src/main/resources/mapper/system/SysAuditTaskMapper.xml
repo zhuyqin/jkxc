@@ -1,0 +1,358 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.system.mapper.SysAuditTaskMapper">
+
+    <!-- 根据订单ID查询所有任务 -->
+    <select id="getTasksByOrderId" resultType="org.jeecg.modules.system.entity.SysAuditTask">
+        SELECT * FROM sys_audit_task
+        WHERE order_id = #{orderId}
+        AND del_flag = 0
+        ORDER BY step_order ASC, create_time ASC
+    </select>
+
+    <!-- 根据订单ID和步骤ID查询任务 -->
+    <select id="getTaskByOrderIdAndStepId" resultType="org.jeecg.modules.system.entity.SysAuditTask">
+        SELECT * FROM sys_audit_task
+        WHERE order_id = #{orderId}
+        AND step_id = #{stepId}
+        AND del_flag = 0
+        LIMIT 1
+    </select>
+
+    <!-- 根据订单ID和步骤顺序查询任务 -->
+    <select id="getTaskByOrderIdAndStepOrder" resultType="org.jeecg.modules.system.entity.SysAuditTask">
+        SELECT * FROM sys_audit_task
+        WHERE order_id = #{orderId}
+        AND step_order = #{stepOrder}
+        AND del_flag = 0
+        ORDER BY create_time DESC
+        LIMIT 1
+    </select>
+
+    <!-- 查询待审核任务列表（支持个人/团队切换、角色过滤、指定人员过滤） -->
+    <select id="getPendingTasks" resultType="org.jeecg.modules.system.entity.SysAuditTask">
+        SELECT t.id, t.order_id, t.order_no, t.process_id, t.step_id, t.step_order, t.task_type, t.task_status,
+               t.assigned_user_id, t.assigned_user_name, t.current_role_id, t.current_role_name,
+               t.audit_data, t.audit_result, t.audit_remark, t.reject_reason, t.audit_time,
+               t.audit_user_id, t.audit_user_name, t.create_by, t.create_time, t.update_by, t.update_time, t.del_flag, 
+               o.company_name, 
+               o.business_type,
+               bc.name AS business_type_name,
+               o.salesman,
+               o.create_time AS order_create_time,
+               o.remarks,
+               o.current_audit_step,
+               o.order_status,
+               o.audit_status,
+               (SELECT COUNT(DISTINCT s.step_order) FROM sys_audit_step s WHERE s.process_id = o.matched_process_id) AS total_steps,
+               (SELECT SUM(amount) FROM gh_order_expense e WHERE e.order_id = o.id AND (e.del_flag = 0 OR e.del_flag IS NULL)) AS expense_amount,
+               (SELECT GROUP_CONCAT(
+                  CONCAT(
+                    COALESCE(sc.name, e.category, '未分类'),
+                    ':¥',
+                    FORMAT(e.amount, 2)
+                  )
+                  ORDER BY e.expense_time DESC, e.create_time DESC
+                  SEPARATOR '; '
+                )
+                FROM gh_order_expense e
+                LEFT JOIN sys_category sc ON sc.id = e.category
+                WHERE e.order_id = o.id AND (e.del_flag = 0 OR e.del_flag IS NULL)
+               ) AS expense_detail,
+               u.realname AS assigned_user_name,
+               CASE WHEN t.assigned_user_id IS NOT NULL THEN t.create_time ELSE NULL END AS assigned_time,
+               st.team_name AS team_name,
+               <!-- MySQL 5.7兼容：不在派生表/子查询FROM中引用外层别名；直接返回JSON中的原始服务人员字段 -->
+               COALESCE(JSON_UNQUOTE(JSON_EXTRACT(t.audit_data, '$.serviceUserName')), '') AS service_user_name,
+               JSON_UNQUOTE(JSON_EXTRACT(t.audit_data, '$.startMonth')) AS start_month,
+               JSON_UNQUOTE(JSON_EXTRACT(t.audit_data, '$.endMonth')) AS end_month,
+               c.contract_no AS contractNo
+        FROM sys_audit_task t
+        INNER JOIN gh_order o ON t.order_id = o.id
+        LEFT JOIN sys_category bc ON bc.id = o.business_type
+        LEFT JOIN sys_user u ON t.assigned_user_id = u.id
+        LEFT JOIN (
+            SELECT realname, MIN(team_id) AS team_id
+            FROM sys_user
+            WHERE del_flag = 0
+            AND (status = 1 OR status IS NULL)
+            AND realname IS NOT NULL AND realname != ''
+            GROUP BY realname
+        ) salesman_team ON salesman_team.realname = o.salesman
+        LEFT JOIN sys_team st ON st.id = salesman_team.team_id
+        LEFT JOIN gh_accounting_contract c ON c.order_id = o.id AND c.del_flag = 0
+        WHERE t.task_type = #{taskType}
+        AND t.task_status = 'pending'
+        AND t.del_flag = 0
+        AND o.del_flag = 0
+        <if test="contractNo != null and contractNo != ''">
+            AND c.contract_no LIKE CONCAT('%', #{contractNo}, '%')
+        </if>
+        <if test="orderNo != null and orderNo != ''">
+            AND o.order_no LIKE CONCAT('%', #{orderNo}, '%')
+        </if>
+        <if test="companyName != null and companyName != ''">
+            AND o.company_name LIKE CONCAT('%', #{companyName}, '%')
+        </if>
+        <if test="isPersonal != null and isPersonal == true">
+            <!-- 个人模式：自己任务 + 角色匹配任务 +（若有数据角色）下级数据任务 -->
+            AND (
+                (t.assigned_user_id = #{userId})
+                <if test="roleIds != null and roleIds.size() > 0">
+                    OR (t.assigned_user_id IS NULL AND t.current_role_id IN
+                    <foreach collection="roleIds" item="roleId" open="(" separator="," close=")">
+                        #{roleId}
+                    </foreach>
+                    )
+                </if>
+                <if test="dataRoleIds != null and dataRoleIds.size() > 0">
+                    OR EXISTS (
+                        SELECT 1 FROM gh_accounting_contract ac
+                        INNER JOIN sys_user su ON ac.service_person = su.realname
+                        INNER JOIN sys_user_role sur ON su.id = sur.user_id
+                        WHERE ac.order_id = o.id
+                        AND ac.del_flag = 0
+                        AND su.del_flag = 0
+                        AND (su.status = 1 OR su.status IS NULL)
+                        AND sur.role_id IN
+                        <foreach collection="dataRoleIds" item="dataRoleId" open="(" separator="," close=")">
+                            #{dataRoleId}
+                        </foreach>
+                    )
+                </if>
+                <if test="roleIds == null or roleIds.size() == 0">
+                    AND (t.assigned_user_id = #{userId})
+                </if>
+            )
+        </if>
+        <if test="isPersonal != null and isPersonal == false">
+            <!-- 团队模式：角色匹配、指定给自己、或数据角色权限匹配（流失审核同样受限） -->
+            AND (
+                (t.assigned_user_id = #{userId})
+                <if test="roleIds != null and roleIds.size() > 0">
+                    OR (t.current_role_id IN
+                    <foreach collection="roleIds" item="roleId" open="(" separator="," close=")">
+                        #{roleId}
+                    </foreach>
+                    )
+                </if>
+                <!-- 数据权限过滤：上级数据角色看到下级数据角色的任务（包含自己） -->
+                <if test="dataRoleIds != null and dataRoleIds.size() > 0">
+                    OR EXISTS (
+                        SELECT 1 FROM gh_accounting_contract ac
+                        INNER JOIN sys_user su ON ac.service_person = su.realname
+                        INNER JOIN sys_user_role sur ON su.id = sur.user_id
+                        WHERE ac.order_id = o.id
+                        AND ac.del_flag = 0
+                        AND su.del_flag = 0
+                        AND (su.status = 1 OR su.status IS NULL)
+                        AND sur.role_id IN
+                        <foreach collection="dataRoleIds" item="dataRoleId" open="(" separator="," close=")">
+                            #{dataRoleId}
+                        </foreach>
+                    )
+                </if>
+                <if test="(roleIds == null or roleIds.size() == 0) and (dataRoleIds == null or dataRoleIds.size() == 0)">
+                    AND (t.assigned_user_id = #{userId})
+                </if>
+            )
+        </if>
+        ORDER BY t.create_time DESC
+    </select>
+
+    <!-- 查询已审核任务列表 -->
+    <select id="getApprovedTasks" resultType="org.jeecg.modules.system.entity.SysAuditTask">
+        SELECT t.id, t.order_id, t.order_no, t.process_id, t.step_id, t.step_order, t.task_type, t.task_status,
+               t.assigned_user_id, t.assigned_user_name, t.current_role_id, t.current_role_name,
+               t.audit_data, t.audit_result, t.audit_remark, t.reject_reason, t.audit_time,
+               t.audit_user_id, t.audit_user_name, t.create_by, t.create_time, t.update_by, t.update_time, t.del_flag,
+               o.company_name, 
+               o.business_type,
+               bc.name AS business_type_name,
+               o.salesman,
+               o.create_time AS order_create_time,
+               o.remarks,
+               o.current_audit_step,
+               o.order_status,
+               o.audit_status,
+               (SELECT COUNT(DISTINCT s.step_order) FROM sys_audit_step s WHERE s.process_id = o.matched_process_id) AS total_steps,
+               (SELECT SUM(amount) FROM gh_order_expense e WHERE e.order_id = o.id AND (e.del_flag = 0 OR e.del_flag IS NULL)) AS expense_amount,
+               (SELECT GROUP_CONCAT(
+                  CONCAT(
+                    COALESCE(sc.name, e.category, '未分类'),
+                    ':¥',
+                    FORMAT(e.amount, 2)
+                  )
+                  ORDER BY e.expense_time DESC, e.create_time DESC
+                  SEPARATOR '; '
+                )
+                FROM gh_order_expense e
+                LEFT JOIN sys_category sc ON sc.id = e.category
+                WHERE e.order_id = o.id AND (e.del_flag = 0 OR e.del_flag IS NULL)
+               ) AS expense_detail,
+               COALESCE(u.realname, t.audit_user_name) AS assigned_user_name,
+               CASE WHEN t.assigned_user_id IS NOT NULL THEN t.create_time ELSE NULL END AS assigned_time,
+               st.team_name AS team_name,
+               <!-- MySQL 5.7兼容：直接返回JSON中的原始服务人员字段 -->
+               COALESCE(JSON_UNQUOTE(JSON_EXTRACT(t.audit_data, '$.serviceUserName')), '') AS service_user_name,
+               JSON_UNQUOTE(JSON_EXTRACT(t.audit_data, '$.startMonth')) AS start_month,
+               JSON_UNQUOTE(JSON_EXTRACT(t.audit_data, '$.endMonth')) AS end_month
+        FROM sys_audit_task t
+        INNER JOIN gh_order o ON t.order_id = o.id
+        LEFT JOIN sys_category bc ON bc.id = o.business_type
+        LEFT JOIN sys_user u ON t.assigned_user_id = u.id
+        LEFT JOIN (
+            SELECT realname, MIN(team_id) AS team_id
+            FROM sys_user
+            WHERE del_flag = 0
+            AND (status = 1 OR status IS NULL)
+            AND realname IS NOT NULL AND realname != ''
+            GROUP BY realname
+        ) salesman_team ON salesman_team.realname = o.salesman
+        LEFT JOIN sys_team st ON st.id = salesman_team.team_id
+        WHERE t.task_type = #{taskType}
+        AND t.task_status = 'approved'
+        AND t.del_flag = 0
+        AND o.del_flag = 0
+        <if test="orderNo != null and orderNo != ''">
+            AND o.order_no LIKE CONCAT('%', #{orderNo}, '%')
+        </if>
+        <if test="companyName != null and companyName != ''">
+            AND o.company_name LIKE CONCAT('%', #{companyName}, '%')
+        </if>
+        <if test="isPersonal != null and isPersonal == true">
+            <!-- 个人模式：只能看到自己审核的 -->
+            AND t.audit_user_id = #{userId}
+        </if>
+        <if test="isPersonal != null and isPersonal == false">
+            <!-- 团队模式：当前角色符合的任务，或者数据权限匹配（包含自己） -->
+            AND (
+                t.current_role_id IN
+                <foreach collection="roleIds" item="roleId" open="(" separator="," close=")">
+                    #{roleId}
+                </foreach>
+                <!-- 数据权限过滤：上级数据角色看到下级数据角色的任务（包含自己） -->
+                <if test="dataRoleIds != null and dataRoleIds.size() > 0">
+                    OR EXISTS (
+                        SELECT 1 FROM gh_accounting_contract ac
+                        INNER JOIN sys_user su ON ac.service_person = su.realname
+                        INNER JOIN sys_user_role sur ON su.id = sur.user_id
+                        WHERE ac.order_id = o.id
+                        AND ac.del_flag = 0
+                        AND su.del_flag = 0
+                        AND (su.status = 1 OR su.status IS NULL)
+                        AND sur.role_id IN
+                        <foreach collection="dataRoleIds" item="dataRoleId" open="(" separator="," close=")">
+                            #{dataRoleId}
+                        </foreach>
+                    )
+                </if>
+            )
+        </if>
+        ORDER BY t.audit_time DESC
+    </select>
+
+    <!-- 查询已驳回任务列表 -->
+    <select id="getRejectedTasks" resultType="org.jeecg.modules.system.entity.SysAuditTask">
+        SELECT t.id, t.order_id, t.order_no, t.process_id, t.step_id, t.step_order, t.task_type, t.task_status,
+               t.assigned_user_id, t.assigned_user_name, t.current_role_id, t.current_role_name,
+               t.audit_data, t.audit_result, t.audit_remark, t.reject_reason, t.audit_time,
+               t.audit_user_id, t.audit_user_name, t.create_by, t.create_time, t.update_by, t.update_time, t.del_flag, 
+               o.company_name, 
+               o.business_type,
+               bc.name AS business_type_name,
+               o.salesman,
+               o.create_time AS order_create_time,
+               o.remarks,
+               o.current_audit_step,
+               o.order_status,
+               o.audit_status,
+               (SELECT COUNT(DISTINCT s.step_order) FROM sys_audit_step s WHERE s.process_id = o.matched_process_id) AS total_steps,
+               (SELECT SUM(amount) FROM gh_order_expense e WHERE e.order_id = o.id AND (e.del_flag = 0 OR e.del_flag IS NULL)) AS expense_amount,
+               (SELECT GROUP_CONCAT(
+                  CONCAT(
+                    COALESCE(sc.name, e.category, '未分类'),
+                    ':¥',
+                    FORMAT(e.amount, 2)
+                  )
+                  ORDER BY e.expense_time DESC, e.create_time DESC
+                  SEPARATOR '; '
+                )
+                FROM gh_order_expense e
+                LEFT JOIN sys_category sc ON sc.id = e.category
+                WHERE e.order_id = o.id AND (e.del_flag = 0 OR e.del_flag IS NULL)
+               ) AS expense_detail,
+               COALESCE(u.realname, t.audit_user_name) AS assigned_user_name,
+               CASE WHEN t.assigned_user_id IS NOT NULL THEN t.create_time ELSE NULL END AS assigned_time,
+               st.team_name AS team_name,
+               <!-- MySQL 5.7兼容：直接返回JSON中的原始服务人员字段 -->
+               COALESCE(JSON_UNQUOTE(JSON_EXTRACT(t.audit_data, '$.serviceUserName')), '') AS service_user_name,
+               JSON_UNQUOTE(JSON_EXTRACT(t.audit_data, '$.startMonth')) AS start_month,
+               JSON_UNQUOTE(JSON_EXTRACT(t.audit_data, '$.endMonth')) AS end_month
+        FROM sys_audit_task t
+        INNER JOIN gh_order o ON t.order_id = o.id
+        LEFT JOIN sys_category bc ON bc.id = o.business_type
+        LEFT JOIN sys_user u ON t.assigned_user_id = u.id
+        LEFT JOIN (
+            SELECT realname, MIN(team_id) AS team_id
+            FROM sys_user
+            WHERE del_flag = 0
+            AND (status = 1 OR status IS NULL)
+            AND realname IS NOT NULL AND realname != ''
+            GROUP BY realname
+        ) salesman_team ON salesman_team.realname = o.salesman
+        LEFT JOIN sys_team st ON st.id = salesman_team.team_id
+        WHERE t.task_type = #{taskType}
+        AND t.task_status = 'rejected'
+        AND t.del_flag = 0
+        AND o.del_flag = 0
+        <if test="orderNo != null and orderNo != ''">
+            AND o.order_no LIKE CONCAT('%', #{orderNo}, '%')
+        </if>
+        <if test="companyName != null and companyName != ''">
+            AND o.company_name LIKE CONCAT('%', #{companyName}, '%')
+        </if>
+        <if test="isPersonal != null and isPersonal == true">
+            <!-- 个人模式：只能看到自己驳回的 -->
+            AND t.audit_user_id = #{userId}
+        </if>
+        <if test="isPersonal != null and isPersonal == false">
+            <!-- 团队模式：当前角色符合的任务，或者数据权限匹配（包含自己） -->
+            AND (
+                t.current_role_id IN
+                <foreach collection="roleIds" item="roleId" open="(" separator="," close=")">
+                    #{roleId}
+                </foreach>
+                <!-- 数据权限过滤：上级数据角色看到下级数据角色的任务（包含自己） -->
+                <if test="dataRoleIds != null and dataRoleIds.size() > 0">
+                    OR EXISTS (
+                        SELECT 1 FROM gh_accounting_contract ac
+                        INNER JOIN sys_user su ON ac.service_person = su.realname
+                        INNER JOIN sys_user_role sur ON su.id = sur.user_id
+                        WHERE ac.order_id = o.id
+                        AND ac.del_flag = 0
+                        AND su.del_flag = 0
+                        AND (su.status = 1 OR su.status IS NULL)
+                        AND sur.role_id IN
+                        <foreach collection="dataRoleIds" item="dataRoleId" open="(" separator="," close=")">
+                            #{dataRoleId}
+                        </foreach>
+                    )
+                </if>
+            )
+        </if>
+        ORDER BY t.audit_time DESC
+    </select>
+
+    <select id="selectDashboardTaskCompletion" resultType="java.util.HashMap">
+        SELECT
+            COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN task_status = 'approved' THEN 1 ELSE 0 END), 0) AS completed
+        FROM sys_audit_task
+        WHERE del_flag = 0
+          AND create_time &gt;= #{yearStart}
+          AND create_time &lt;= #{yearEnd}
+    </select>
+
+</mapper>
+

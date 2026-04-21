@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.order.mapper.GhAccountingContractMapper">
+
+    <!-- 优化后的分页查询：一次性关联查询所有需要的数据 -->
+    <select id="selectPageWithCustomerInfo" resultType="org.jeecg.modules.order.entity.GhAccountingContract">
+        SELECT 
+            c.*,
+            cust.id as customer_id,
+            cust.related_company_name,
+            -- 消费金额：该客户所有订单的金额总和
+            IFNULL(order_stats.total_spending, 0) as total_spending,
+            -- 业务标签：该客户所有订单的业务类型（去重）
+            order_stats.business_tags as business_tag,
+            -- 订单数量
+            IFNULL(order_stats.order_count, 0) as customer_order_count,
+            -- 服务月数：从最早订单到现在的月数
+            IFNULL(order_stats.service_months, 0) as service_months,
+            -- 是否有高端业务
+            order_stats.has_high_end_business,
+            -- 是否有科小业务
+            order_stats.has_kexiao_business
+        FROM gh_accounting_contract c
+        LEFT JOIN gh_customer cust ON c.company_name = cust.corporate_name AND cust.del_flag = 0
+        LEFT JOIN (
+            SELECT 
+                o.company_id,
+                o.company_name,
+                SUM(IFNULL(o.contract_amount, IFNULL(o.order_amount, 0))) as total_spending,
+                COUNT(DISTINCT o.id) as order_count,
+                GROUP_CONCAT(DISTINCT o.business_type) as business_type_ids,
+                -- 业务标签需要后续通过字典服务转换
+                '' as business_tags,
+                -- 服务月数：从最早订单创建时间到现在
+                TIMESTAMPDIFF(MONTH, MIN(o.create_time), NOW()) as service_months,
+                -- 是否有高端业务（需要通过字典服务判断）
+                0 as has_high_end_business,
+                -- 是否有科小业务（需要通过字典服务判断）
+                0 as has_kexiao_business
+            FROM gh_order o
+            WHERE o.del_flag = 0
+            GROUP BY o.company_id, o.company_name
+        ) order_stats ON (
+            (cust.id IS NOT NULL AND order_stats.company_id = cust.id) 
+            OR (cust.id IS NULL AND order_stats.company_name = c.company_name)
+        )
+        <where>
+            c.del_flag = 0
+            <if test="ew != null and ew.sqlSegment != null and ew.sqlSegment != ''">
+                AND ${ew.sqlSegment}
+            </if>
+        </where>
+        ORDER BY c.create_time DESC
+    </select>
+
+</mapper>

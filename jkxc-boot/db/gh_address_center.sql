@@ -1,0 +1,52 @@
+-- ============================================
+-- 地址中心表创建SQL脚本
+-- 表名: gh_address_center
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS `gh_address_center` (
+  `id` varchar(32) NOT NULL COMMENT '主键',
+  `company_name` varchar(200) DEFAULT NULL COMMENT '公司名称',
+  `salesman` varchar(50) DEFAULT NULL COMMENT '业务员',
+  `advisor` varchar(50) DEFAULT NULL COMMENT '财税顾问',
+  `sfjz` varchar(10) DEFAULT NULL COMMENT '是否记账',
+  `sffs` varchar(10) DEFAULT NULL COMMENT '是否返税',
+  `address_status` varchar(20) DEFAULT NULL COMMENT '地址状态',
+  `service_status` varchar(20) DEFAULT '1' COMMENT '服务状态：1-服务中，2-已终止',
+  `loss_flag` int(1) DEFAULT '0' COMMENT '流失标志：0-正常，1-已流失',
+  `renewal_fee` int(11) DEFAULT NULL COMMENT '续费价格',
+  `address_cost` decimal(18,2) DEFAULT NULL COMMENT '地址成本',
+  `start_date` date DEFAULT NULL COMMENT '起始日期',
+  `termination_date` date DEFAULT NULL COMMENT '终止日期',
+  `supplier` varchar(50) DEFAULT NULL COMMENT '供应商',
+  `street_address` varchar(500) DEFAULT NULL COMMENT '街道地址',
+  `park_address` varchar(500) DEFAULT NULL COMMENT '园区地址',
+  `supplier_company` varchar(200) DEFAULT NULL COMMENT '供应商公司',
+  `supplier_contact` varchar(100) DEFAULT NULL COMMENT '供应商联系人',
+  `supplier_contact_number` varchar(50) DEFAULT NULL COMMENT '供应商联系电话',
+  `contract_amount` int(11) DEFAULT NULL COMMENT '合同金额',
+  `apply_for_invoicing` varchar(10) DEFAULT NULL COMMENT '申请开票',
+  `charge_type` varchar(50) DEFAULT NULL COMMENT '收费类型',
+  `remarks` varchar(500) DEFAULT NULL COMMENT '备注',
+  `pic_id` varchar(500) DEFAULT NULL COMMENT '合同照片',
+  `create_time` datetime DEFAULT NULL COMMENT '创建时间',
+  `data_id` varchar(32) DEFAULT NULL COMMENT '公司资料id',
+  `reimbursement_flag` varchar(10) DEFAULT NULL COMMENT '报销标志',
+  `contract_id` varchar(32) DEFAULT NULL COMMENT '订单ID（通过contractId字段存储订单ID，用于关联订单）',
+  `received_amout` varchar(50) DEFAULT NULL COMMENT '已收金额',
+  `payment_method` varchar(50) DEFAULT NULL COMMENT '支付方式',
+  `collection_account_number` varchar(100) DEFAULT NULL COMMENT '收款账号',
+  `renew_id` varchar(32) DEFAULT NULL COMMENT '续费ID',
+  `create_by` varchar(50) DEFAULT NULL COMMENT '创建人',
+  `update_by` varchar(50) DEFAULT NULL COMMENT '更新人',
+  `update_time` datetime DEFAULT NULL COMMENT '更新时间',
+  `del_flag` int(1) DEFAULT '0' COMMENT '删除标志：0-正常，1-已删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_company_name` (`company_name`),
+  KEY `idx_contract_id` (`contract_id`),
+  KEY `idx_address_status` (`address_status`),
+  KEY `idx_service_status` (`service_status`),
+  KEY `idx_loss_flag` (`loss_flag`),
+  KEY `idx_del_flag` (`del_flag`),
+  KEY `idx_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='地址中心';
+

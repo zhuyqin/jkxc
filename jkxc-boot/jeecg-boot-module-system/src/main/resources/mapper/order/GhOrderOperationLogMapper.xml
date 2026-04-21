@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.order.mapper.GhOrderOperationLogMapper">
+
+    <!-- 根据订单ID查询操作记录 -->
+    <select id="getLogsByOrderId" resultType="org.jeecg.modules.order.entity.GhOrderOperationLog">
+        SELECT * FROM gh_order_operation_log
+        WHERE order_id = #{orderId}
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>
+

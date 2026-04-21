@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.system.mapper.SysAuditFormIndicatorMapper">
+
+    <!-- 根据步骤表单ID查询所有指标 -->
+    <select id="getIndicatorsByStepFormId" resultType="org.jeecg.modules.system.entity.SysAuditFormIndicator">
+        SELECT * FROM sys_audit_form_indicator
+        WHERE step_form_id = #{stepFormId}
+        ORDER BY sort_order ASC
+    </select>
+
+    <!-- 删除步骤表单的所有指标 -->
+    <delete id="deleteByStepFormId">
+        DELETE FROM sys_audit_form_indicator
+        WHERE step_form_id = #{stepFormId}
+    </delete>
+
+</mapper>
+

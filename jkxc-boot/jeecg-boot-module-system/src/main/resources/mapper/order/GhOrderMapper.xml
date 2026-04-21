@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.order.mapper.GhOrderMapper">
+
+    <!-- 统计指定时间范围内的订单数量和金额 -->
+    <select id="getOrderStatistics" resultType="java.util.HashMap">
+        SELECT 
+            COUNT(*) as count,
+            COALESCE(SUM(COALESCE(contract_amount, order_amount, 0)), 0) as amount
+        FROM gh_order
+        WHERE del_flag = 0
+        <if test="startTime != null">
+            AND create_time >= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+    </select>
+
+    <!-- 首页订单 KPI：仅扫描本年订单一次 -->
+    <select id="getDashboardOrderKpis" resultType="java.util.HashMap">
+        SELECT
+            SUM(CASE WHEN create_time &gt;= #{todayStart} AND create_time &lt;= #{todayEnd} THEN 1 ELSE 0 END) AS todayOrders,
+            COALESCE(SUM(CASE WHEN create_time &gt;= #{todayStart} AND create_time &lt;= #{todayEnd}
+                THEN COALESCE(contract_amount, order_amount, 0) ELSE 0 END), 0) AS todayAmount,
+            SUM(CASE WHEN create_time &gt;= #{monthStart} AND create_time &lt;= #{monthEnd} THEN 1 ELSE 0 END) AS monthOrders,
+            COALESCE(SUM(CASE WHEN create_time &gt;= #{monthStart} AND create_time &lt;= #{monthEnd}
+                THEN COALESCE(contract_amount, order_amount, 0) ELSE 0 END), 0) AS monthAmount,
+            SUM(CASE WHEN create_time &gt;= #{yearStart} AND create_time &lt;= #{yearEnd} THEN 1 ELSE 0 END) AS yearOrders,
+            COALESCE(SUM(CASE WHEN create_time &gt;= #{yearStart} AND create_time &lt;= #{yearEnd}
+                THEN COALESCE(contract_amount, order_amount, 0) ELSE 0 END), 0) AS yearAmount
+        FROM gh_order
+        WHERE del_flag = 0
+          AND create_time &gt;= #{yearStart}
+          AND create_time &lt;= #{yearEnd}
+    </select>
+
+    <!-- 获取月度订单趋势（全年12个月） -->
+    <select id="getMonthlyTrend" resultType="java.util.HashMap">
+        SELECT 
+            MONTH(create_time) as month,
+            COUNT(*) as orders,
+            COALESCE(SUM(COALESCE(contract_amount, order_amount, 0)), 0) as amount
+        FROM gh_order
+        WHERE del_flag = 0
+        AND YEAR(create_time) = #{year}
+        GROUP BY MONTH(create_time)
+        ORDER BY MONTH(create_time)
+    </select>
+
+    <!-- 获取业务类型分布 -->
+    <select id="getBusinessTypeDistribution" resultType="java.util.HashMap">
+        SELECT 
+            COALESCE(business_type, '其他') as businessType,
+            COUNT(*) as count,
+            COALESCE(SUM(COALESCE(contract_amount, order_amount, 0)), 0) as amount
+        FROM gh_order
+        WHERE del_flag = 0
+        <if test="startTime != null">
+            AND create_time >= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+        GROUP BY business_type
+        ORDER BY count DESC
+    </select>
+
+    <!-- 获取业务员排名 -->
+    <select id="getSalesmanRank" resultType="java.util.HashMap">
+        SELECT 
+            COALESCE(salesman, '未分配') as salesman,
+            COUNT(*) as orders,
+            COALESCE(SUM(COALESCE(contract_amount, order_amount, 0)), 0) as amount
+        FROM gh_order
+        WHERE del_flag = 0
+        <if test="startTime != null">
+            AND create_time >= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+        GROUP BY salesman
+        ORDER BY orders DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 获取不同业务员数量 -->
+    <select id="getDistinctSalesmanCount" resultType="int">
+        SELECT COUNT(DISTINCT salesman)
+        FROM gh_order
+        WHERE del_flag = 0
+        AND salesman IS NOT NULL
+        AND salesman != ''
+    </select>
+
+    <!-- 高价值客户 Top N：先按订单聚合再关联客户，避免全表客户 LEFT JOIN 全表订单 -->
+    <select id="getTopValueCustomers" resultType="java.util.HashMap">
+        SELECT
+            agg.company_id AS id,
+            MAX(c.corporate_name) AS companyName,
+            agg.value AS value
+        FROM (
+            SELECT
+                company_id,
+                COALESCE(SUM(COALESCE(contract_amount, order_amount, 0)), 0) AS value
+            FROM gh_order
+            WHERE del_flag = 0
+              AND company_id IS NOT NULL
+              AND company_id != ''
+            GROUP BY company_id
+            HAVING value &gt; 0
+            ORDER BY value DESC
+            LIMIT #{limit}
+        ) agg
+        INNER JOIN gh_customer c ON c.id = agg.company_id AND (c.del_flag = 0 OR c.del_flag IS NULL)
+        ORDER BY agg.value DESC
+    </select>
+
+    <!-- 最近订单（仅首页需要的列） -->
+    <select id="getRecentOrdersSummary" resultType="java.util.HashMap">
+        SELECT
+            id,
+            order_no AS orderNo,
+            company_name AS companyName,
+            salesman,
+            COALESCE(contract_amount, order_amount, 0) AS amount,
+            create_time AS createTime
+        FROM gh_order
+        WHERE del_flag = 0
+        ORDER BY create_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countDistinctCustomersBySalesman" resultType="int">
+        SELECT COUNT(DISTINCT company_id)
+        FROM gh_order
+        WHERE del_flag = 0
+          AND salesman = #{salesman}
+          AND company_id IS NOT NULL
+          AND company_id != ''
+    </select>
+
+</mapper>

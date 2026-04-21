@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.jeecg.modules.system.mapper.SysAuditProcessBindingMapper">
+
+    <!-- 根据流程ID查询所有绑定 -->
+    <select id="getBindingsByProcessId" resultType="org.jeecg.modules.system.entity.SysAuditProcessBinding">
+        SELECT * FROM sys_audit_process_binding
+        WHERE process_id = #{processId}
+        ORDER BY create_time ASC
+    </select>
+
+    <!-- 根据业务类型ID查询绑定的流程 -->
+    <select id="getBindingByBusinessTypeId" resultType="org.jeecg.modules.system.entity.SysAuditProcessBinding">
+        SELECT * FROM sys_audit_process_binding
+        WHERE business_type_id = #{businessTypeId}
+        LIMIT 1
+    </select>
+
+    <!-- 根据业务类型ID和任务类型查询绑定的流程 -->
+    <select id="getBindingByBusinessTypeAndTaskType" resultType="org.jeecg.modules.system.entity.SysAuditProcessBinding">
+        SELECT * FROM sys_audit_process_binding
+        WHERE business_type_id = #{businessTypeId}
+        AND task_type = #{taskType}
+        LIMIT 1
+    </select>
+
+    <!-- 删除流程的所有绑定 -->
+    <delete id="deleteByProcessId">
+        DELETE FROM sys_audit_process_binding
+        WHERE process_id = #{processId}
+    </delete>
+
+</mapper>
+
